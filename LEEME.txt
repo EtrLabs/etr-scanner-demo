@@ -1,1 +1,1 @@
-ETR Scanner Camera Demo Continuo. La cámara no se detiene después de leer.
+ETR Scanner con botón SCAN. La cámara se mantiene abierta y solo lee al pulsar SCAN.

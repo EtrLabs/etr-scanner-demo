@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>ETR Scanner Camera Demo · Continuo</title>
+<title>ETR Scanner · Botón SCAN</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <style>
 :root{--bg:#070b14;--cyan:#00d4ff;--orange:#ff8a1f;--text:#eaf3ff;--muted:#9ca3af;--red:#dc2626;--green:#0891b2}
@@ -13,38 +13,44 @@ body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:radial-gradient(c
 h1{margin:0 0 6px;font-size:30px}
 h1 span{color:var(--cyan)}
 p{color:var(--muted)}
-button{border:0;border-radius:14px;padding:13px 15px;color:white;font-weight:900;margin:4px;background:#2563eb;cursor:pointer}
-button.green{background:var(--green)}button.orange{background:var(--orange)}button.red{background:var(--red)}button.gray{background:#475569}
+button{border:0;border-radius:14px;padding:14px 16px;color:white;font-weight:900;margin:4px;background:#2563eb;cursor:pointer}
+button.scan{background:#16a34a;font-size:22px;width:100%;margin-top:8px}
+button.green{background:var(--green)}button.red{background:var(--red)}button.gray{background:#475569}
 #reader{width:100%;min-height:280px;background:#000;border-radius:18px;overflow:hidden;margin:14px 0;border:1px solid rgba(0,212,255,.35)}
 .result{background:#07111f;border:1px solid rgba(0,212,255,.25);border-radius:16px;padding:14px;margin-top:12px;font-family:Consolas,monospace;min-height:90px}
-.ok{color:#86efac;font-weight:900}.bad{color:#fecaca;font-weight:900}.small{font-size:12px;color:var(--muted)}
+.ok{color:#86efac;font-weight:900}.bad{color:#fecaca;font-weight:900}.armed{color:#fde68a;font-weight:900}.small{font-size:12px;color:var(--muted)}
 input{width:100%;padding:12px;border-radius:12px;background:#07111f;border:1px solid rgba(255,255,255,.18);color:white;margin-top:8px}
-.log{max-height:180px;overflow:auto;background:#050b14;border-radius:12px;padding:10px;margin-top:10px;font-family:Consolas,monospace;font-size:13px}
+.log{max-height:160px;overflow:auto;background:#050b14;border-radius:12px;padding:10px;margin-top:10px;font-family:Consolas,monospace;font-size:13px}
 </style>
 </head>
 <body>
 <div class="card">
-  <h1><span>ETR</span> Scanner Continuo</h1>
-  <p>Modo pistola: la cámara NO se cierra al leer. Se queda activa para seguir escaneando.</p>
+  <h1><span>ETR</span> Scanner con botón SCAN</h1>
+  <p>La cámara permanece abierta, pero solo lee cuando pulsas SCAN.</p>
+
   <button class="green" onclick="startScanner()">📷 Abrir cámara</button>
-  <button class="orange" onclick="switchCamera()">🔄 Cambiar cámara</button>
   <button class="red" onclick="stopScanner()">✖ Cerrar cámara</button>
   <button class="gray" onclick="clearResult()">Limpiar</button>
+
   <div id="reader"></div>
+
+  <button class="scan" onclick="armScan()">🔫 SCAN</button>
+
   <label class="small">Último código leído</label>
   <input id="codeInput" placeholder="Aquí aparecerá el EAN / QR">
-  <div class="result" id="resultBox">Estado: esperando iniciar cámara.</div>
+
+  <div class="result" id="resultBox">Estado: abre cámara y pulsa SCAN para leer.</div>
   <div class="log" id="logBox">Historial de lecturas:</div>
-  <p class="small">Protección activa: ignora el mismo código durante 1,5 segundos para evitar duplicados.</p>
 </div>
+
 <script>
 let html5QrCode = null;
 let cameras = [];
 let currentCameraIndex = 0;
 let isRunning = false;
-let lastCode = "";
-let lastTime = 0;
+let scanArmed = false;
 let scanCount = 0;
+let armTimeout = null;
 
 function beep(){
   try{
@@ -61,36 +67,69 @@ function beep(){
     osc.stop(ctx.currentTime + 0.1);
   }catch(e){}
 }
+
 function setResult(html){document.getElementById("resultBox").innerHTML = html;}
+
 function logScan(code){
   const box = document.getElementById("logBox");
   const time = new Date().toLocaleTimeString("es-ES");
   box.innerHTML = "Historial de lecturas:<br><div><b>" + time + "</b> · " + code + "</div>" + box.innerHTML.replace("Historial de lecturas:<br>","");
 }
+
+function armScan(){
+  if(!isRunning){
+    setResult("<span class='bad'>Primero abre la cámara.</span>");
+    return;
+  }
+  scanArmed = true;
+  setResult("<span class='armed'>SCAN ACTIVADO</span><br>Apunta al código. Leerá una sola vez.");
+  if(armTimeout) clearTimeout(armTimeout);
+  armTimeout = setTimeout(() => {
+    if(scanArmed){
+      scanArmed = false;
+      setResult("SCAN cancelado por tiempo. Pulsa SCAN otra vez.");
+    }
+  }, 4500);
+}
+
 function onScanSuccess(decodedText, decodedResult){
-  const now = Date.now();
-  if(decodedText === lastCode && (now - lastTime) < 1500){ return; }
-  lastCode = decodedText;
-  lastTime = now;
+  if(!scanArmed) return;
+
+  scanArmed = false;
+  if(armTimeout) clearTimeout(armTimeout);
+
   scanCount++;
   document.getElementById("codeInput").value = decodedText;
   beep();
   if(navigator.vibrate){navigator.vibrate(120);}
+
   let format = "detectado";
   try{format = decodedResult.result.format.formatName || "detectado";}catch(e){}
-  setResult("<span class='ok'>LECTURA OK</span><br>Código: <b>" + decodedText + "</b><br>Formato: " + format + "<br>Lecturas: " + scanCount + "<br>Cámara activa para siguiente código.");
+
+  setResult(
+    "<span class='ok'>LECTURA OK</span><br>" +
+    "Código: <b>" + decodedText + "</b><br>" +
+    "Formato: " + format + "<br>" +
+    "Lecturas: " + scanCount + "<br>" +
+    "Cámara sigue activa. Pulsa SCAN para otro código."
+  );
+
   logScan(decodedText);
 }
+
 function onScanFailure(error){}
+
 async function startScanner(){
   try{
-    if(isRunning){setResult("<span class='ok'>Scanner ya activo.</span>");return;}
+    if(isRunning){setResult("<span class='ok'>Cámara ya activa.</span><br>Pulsa SCAN para leer.");return;}
     setResult("Solicitando permiso de cámara...");
     if(!html5QrCode){html5QrCode = new Html5Qrcode("reader");}
     cameras = await Html5Qrcode.getCameras();
     if(!cameras || !cameras.length){setResult("<span class='bad'>No se encontraron cámaras.</span>");return;}
+
     let backIndex = cameras.findIndex(c => /back|rear|environment|trasera|posterior/i.test(c.label));
     if(backIndex >= 0){currentCameraIndex = backIndex;}
+
     const cameraId = cameras[currentCameraIndex].id;
     await html5QrCode.start(
       cameraId,
@@ -99,14 +138,17 @@ async function startScanner(){
       onScanFailure
     );
     isRunning = true;
-    setResult("<span class='ok'>CÁMARA ACTIVA</span><br>Modo continuo listo.<br>Apunta al código EAN o QR.");
+    setResult("<span class='ok'>CÁMARA ACTIVA</span><br>Pulsa SCAN para leer un código.");
   }catch(e){
     console.error(e);
     setResult("<span class='bad'>ERROR AL ABRIR CÁMARA</span><br>" + String(e));
   }
 }
+
 async function stopScanner(){
   try{
+    scanArmed = false;
+    if(armTimeout) clearTimeout(armTimeout);
     if(html5QrCode && isRunning){ await html5QrCode.stop(); await html5QrCode.clear(); }
     isRunning = false;
     setResult("Scanner detenido.");
@@ -116,22 +158,12 @@ async function stopScanner(){
     setResult("Scanner detenido con aviso: " + String(e));
   }
 }
-async function switchCamera(){
-  try{
-    if(!cameras.length){cameras = await Html5Qrcode.getCameras();}
-    if(!cameras.length){setResult("<span class='bad'>No hay cámaras para cambiar.</span>");return;}
-    currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
-    if(isRunning){ await stopScanner(); setTimeout(startScanner,300); } else { startScanner(); }
-  }catch(e){
-    console.error(e);
-    setResult("<span class='bad'>No se pudo cambiar cámara.</span><br>" + String(e));
-  }
-}
+
 function clearResult(){
   document.getElementById("codeInput").value = "";
-  scanCount = 0; lastCode = ""; lastTime = 0;
+  scanCount = 0;
   document.getElementById("logBox").innerHTML = "Historial de lecturas:";
-  setResult("Estado: limpio. Cámara " + (isRunning ? "activa." : "detenida."));
+  setResult("Estado: limpio. Cámara " + (isRunning ? "activa. Pulsa SCAN." : "detenida."));
 }
 </script>
 </body>
