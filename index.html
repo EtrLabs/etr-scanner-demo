@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ETR Scanner Camera Demo</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+:root{--bg:#070b14;--panel:#111827;--cyan:#00d4ff;--orange:#ff8a1f;--text:#eaf3ff;--muted:#9ca3af;--red:#dc2626;--green:#0891b2}
+*{box-sizing:border-box}
+body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:radial-gradient(circle at 0 0,rgba(0,212,255,.16),transparent 30%),var(--bg);color:var(--text);padding:16px}
+.card{background:rgba(17,24,39,.96);border:1px solid rgba(0,212,255,.22);border-radius:22px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.32);max-width:760px;margin:auto}
+h1{margin:0 0 6px;font-size:32px}
+h1 span{color:var(--cyan)}
+p{color:var(--muted)}
+button{border:0;border-radius:14px;padding:13px 15px;color:white;font-weight:900;margin:4px;background:#2563eb;cursor:pointer}
+button.green{background:var(--green)}button.orange{background:var(--orange)}button.red{background:var(--red)}button.gray{background:#475569}
+#reader{width:100%;min-height:280px;background:#000;border-radius:18px;overflow:hidden;margin:14px 0;border:1px solid rgba(0,212,255,.35)}
+.result{background:#07111f;border:1px solid rgba(0,212,255,.25);border-radius:16px;padding:14px;margin-top:12px;font-family:Consolas,monospace;min-height:90px}
+.ok{color:#86efac;font-weight:900}.bad{color:#fecaca;font-weight:900}.small{font-size:12px;color:var(--muted)}
+input{width:100%;padding:12px;border-radius:12px;background:#07111f;border:1px solid rgba(255,255,255,.18);color:white;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1><span>ETR</span> Scanner Camera Demo</h1>
+  <p>Demo independiente para probar cámara Android/iPhone/PC antes de meterlo en el ERP.</p>
+
+  <button class="green" onclick="startScanner()">📷 Abrir cámara</button>
+  <button class="orange" onclick="switchCamera()">🔄 Cambiar cámara</button>
+  <button class="red" onclick="stopScanner()">✖ Cerrar cámara</button>
+  <button class="gray" onclick="clearResult()">Limpiar</button>
+
+  <div id="reader"></div>
+
+  <label class="small">Código leído</label>
+  <input id="codeInput" placeholder="Aquí aparecerá el EAN / QR">
+
+  <div class="result" id="resultBox">Estado: esperando iniciar cámara.</div>
+
+  <p class="small">Nota: si desde archivo local no abre, habrá que probarlo desde servidor local o web HTTPS.</p>
+</div>
+
+<script>
+let html5QrCode = null;
+let cameras = [];
+let currentCameraIndex = 0;
+let isRunning = false;
+
+function beep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 950;
+    osc.type = "square";
+    gain.gain.value = 0.05;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+    osc.stop(ctx.currentTime + 0.1);
+  }catch(e){}
+}
+
+function setResult(html){document.getElementById("resultBox").innerHTML = html;}
+
+function onScanSuccess(decodedText, decodedResult){
+  document.getElementById("codeInput").value = decodedText;
+  beep();
+  if(navigator.vibrate){navigator.vibrate(120);}
+  let format = "detectado";
+  try{format = decodedResult.result.format.formatName || "detectado";}catch(e){}
+  setResult("<span class='ok'>LECTURA OK</span><br>Código: <b>" + decodedText + "</b><br>Formato: " + format);
+  stopScanner();
+}
+
+function onScanFailure(error){}
+
+async function startScanner(){
+  try{
+    if(isRunning){setResult("<span class='ok'>Scanner ya activo.</span>");return;}
+    setResult("Solicitando permiso de cámara...");
+
+    if(!html5QrCode){html5QrCode = new Html5Qrcode("reader");}
+
+    cameras = await Html5Qrcode.getCameras();
+
+    if(!cameras || !cameras.length){
+      setResult("<span class='bad'>No se encontraron cámaras.</span>");
+      return;
+    }
+
+    let backIndex = cameras.findIndex(c => /back|rear|environment|trasera|posterior/i.test(c.label));
+    if(backIndex >= 0){currentCameraIndex = backIndex;}
+
+    const cameraId = cameras[currentCameraIndex].id;
+
+    await html5QrCode.start(
+      cameraId,
+      {
+        fps: 10,
+        qrbox: function(viewfinderWidth, viewfinderHeight){
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdge * 0.72);
+          return { width: qrboxSize, height: qrboxSize };
+        },
+        aspectRatio: 1.777
+      },
+      onScanSuccess,
+      onScanFailure
+    );
+
+    isRunning = true;
+    setResult("<span class='ok'>CÁMARA ACTIVA</span><br>Cámara: " + (cameras[currentCameraIndex].label || "cámara " + (currentCameraIndex+1)) + "<br>Apunta al código EAN o QR.");
+
+  }catch(e){
+    console.error(e);
+    setResult("<span class='bad'>ERROR AL ABRIR CÁMARA</span><br>" + String(e));
+  }
+}
+
+async function stopScanner(){
+  try{
+    if(html5QrCode && isRunning){
+      await html5QrCode.stop();
+      await html5QrCode.clear();
+    }
+    isRunning = false;
+    setResult("Scanner detenido.");
+  }catch(e){
+    console.error(e);
+    isRunning = false;
+    setResult("Scanner detenido con aviso: " + String(e));
+  }
+}
+
+async function switchCamera(){
+  try{
+    if(!cameras.length){cameras = await Html5Qrcode.getCameras();}
+    if(!cameras.length){setResult("<span class='bad'>No hay cámaras para cambiar.</span>");return;}
+    currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+    if(isRunning){
+      await stopScanner();
+      setTimeout(startScanner, 300);
+    }else{
+      startScanner();
+    }
+  }catch(e){
+    console.error(e);
+    setResult("<span class='bad'>No se pudo cambiar cámara.</span><br>" + String(e));
+  }
+}
+
+function clearResult(){
+  document.getElementById("codeInput").value = "";
+  setResult("Estado: limpio. Pulsa Abrir cámara.");
+}
+</script>
+</body>
+</html>
