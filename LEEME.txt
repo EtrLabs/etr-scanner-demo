@@ -1,1 +1,1 @@
-Abrir index.html en Chrome Android y permitir cámara.
+ETR Scanner Camera Demo Continuo. La cámara no se detiene después de leer.
