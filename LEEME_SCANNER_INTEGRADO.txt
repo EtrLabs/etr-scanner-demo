@@ -1,0 +1,18 @@
+ETR Lab WMS · Scanner integrado V1
+
+Incluye:
+- Módulo cámara integrado en el ERP.
+- Botón SCAN: cámara abierta, lectura controlada.
+- Aplicación automática según pestaña:
+  Entradas: rellena producto.
+  Pedido: selecciona producto.
+  Picking: valida línea.
+  Inventario: selecciona producto.
+- Beep y vibración.
+- Preparado para probar en GitHub Pages HTTPS.
+- Branding oficial ETR Software.
+
+Importante:
+La cámara solo funcionará correctamente desde HTTPS, por ejemplo GitHub Pages.
+
+© 2026 ETR Software
